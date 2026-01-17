@@ -1,862 +1,913 @@
-import React, { useState, useMemo } from 'react';
-import { Menu, Heart, Search, ShoppingCart, MapPin, Clock, Star, DollarSign, Home } from 'lucide-react';
+from flask import Flask, render_template_string, jsonify, request
+from datetime import datetime
+import json
 
-// ============== TYPE DEFINITIONS ==============
+app = Flask(__name__)
 
-interface BaseItem {
-  id: number;
-  name: string;
-  image: string;
-  rating: number;
-  reviews: number;
-  isFavorite?: boolean;
-}
-
-interface Movie extends BaseItem {
-  genre: string;
-  duration: string;
-  releaseDate: string;
-  language: string;
-  description: string;
-  theaters: string;
-}
-
-interface TravelPackage extends BaseItem {
-  destination: string;
-  days: number;
-  price: number;
-  location: string;
-  includes: string[];
-  startDate: string;
-}
-
-interface Product extends BaseItem {
-  price: number;
-  category: string;
-  description: string;
-  inStock: boolean;
-}
-
-interface Restaurant extends BaseItem {
-  cuisine: string;
-  price: string;
-  deliveryTime: string;
-  distance: string;
-  address: string;
-  openTime: string;
-}
-
-interface CartItem {
-  id: number;
-  name: string;
-  price: number;
-  quantity: number;
-  category: string;
-  image: string;
-  categoryType: Category;
-}
-
-interface Booking {
-  id: string;
-  date: string;
-  itemName: string;
-  quantity: number;
-  total: number;
-  category: Category;
-}
-
-type ViewMode = 'home' | 'list' | 'detail' | 'cart' | 'checkout' | 'confirmation' | 'bookings';
-type Category = 'movies' | 'travel' | 'shopping' | 'eating';
-
-// ============== MOCK DATA ==============
-
-const MOVIES: Movie[] = [
-  {
-    id: 1,
-    name: "Dune: Part Two",
-    genre: "Sci-Fi/Adventure",
-    duration: "2h 46m",
-    releaseDate: "2024",
-    language: "English",
-    image: "🎬",
-    rating: 4.8,
-    reviews: 3200,
-    theaters: "PVR, INOX, Cinepolis",
-    description: "Epic space adventure with stunning visuals"
-  },
-  {
-    id: 2,
-    name: "Pushpa 2",
-    genre: "Action/Drama",
-    duration: "2h 35m",
-    releaseDate: "2024",
-    language: "Telugu",
-    image: "🎭",
-    rating: 4.6,
-    reviews: 2800,
-    theaters: "INOX, Cinepolis",
-    description: "Action-packed Telugu blockbuster"
-  },
-  {
-    id: 3,
-    name: "Article 370",
-    genre: "Drama/Thriller",
-    duration: "2h 18m",
-    releaseDate: "2024",
-    language: "Hindi",
-    image: "🎪",
-    rating: 4.5,
-    reviews: 1900,
-    theaters: "PVR, INOX, Cinepolis",
-    description: "Political thriller based on true events"
-  }
-];
-
-const TRAVEL_PACKAGES: TravelPackage[] = [
-  {
-    id: 1,
-    name: "Kerala Backwaters Tour",
-    destination: "Kerala",
-    days: 5,
-    price: 24999,
-    location: "Kottayam, Kerala",
-    image: "🌴",
-    rating: 4.7,
-    reviews: 450,
-    includes: ["Hotel", "Boat rides", "Meals", "Guide"],
-    startDate: "2025-02-15"
-  },
-  {
-    id: 2,
-    name: "Himalayan Adventure",
-    destination: "Himachal Pradesh",
-    days: 7,
-    price: 34999,
-    location: "Manali, Himachal Pradesh",
-    image: "⛰️",
-    rating: 4.8,
-    reviews: 620,
-    includes: ["Trek", "Camping", "Meals", "Equipment"],
-    startDate: "2025-03-01"
-  },
-  {
-    id: 3,
-    name: "Goa Beach Escape",
-    destination: "Goa",
-    days: 4,
-    price: 18999,
-    location: "South Goa",
-    image: "🏖️",
-    rating: 4.6,
-    reviews: 380,
-    includes: ["Resort", "Water sports", "Meals", "Beach activities"],
-    startDate: "2025-02-20"
-  }
-];
-
-const PRODUCTS: Product[] = [
-  {
-    id: 1,
-    name: "Sony Wireless Headphones",
-    price: 5999,
-    category: "Electronics",
-    image: "🎧",
-    rating: 4.7,
-    reviews: 1200,
-    description: "Premium noise-cancelling wireless headphones",
-    inStock: true
-  },
-  {
-    id: 2,
-    name: "Running Shoes",
-    price: 3499,
-    category: "Sports",
-    image: "👟",
-    rating: 4.5,
-    reviews: 890,
-    description: "Comfortable athletic running shoes",
-    inStock: true
-  },
-  {
-    id: 3,
-    name: "Backpack",
-    price: 2199,
-    category: "Travel",
-    image: "🎒",
-    rating: 4.6,
-    reviews: 560,
-    description: "Durable travel backpack with multiple compartments",
-    inStock: true
-  },
-  {
-    id: 4,
-    name: "Coffee Maker",
-    price: 4299,
-    category: "Kitchen",
-    image: "☕",
-    rating: 4.4,
-    reviews: 340,
-    description: "Automatic coffee maker with timer",
-    inStock: false
-  }
-];
-
-const RESTAURANTS: Restaurant[] = [
-  {
-    id: 1,
-    name: "Spice Route",
-    cuisine: "Indian",
-    price: "$$",
-    deliveryTime: "30-40 mins",
-    distance: "2.5 km",
-    image: "🍛",
-    rating: 4.6,
-    reviews: 2100,
-    address: "Amaravati, AP",
-    openTime: "11 AM - 11 PM"
-  },
-  {
-    id: 2,
-    name: "Pasta Paradise",
-    cuisine: "Italian",
-    price: "$$$",
-    deliveryTime: "35-45 mins",
-    distance: "3.1 km",
-    image: "🍝",
-    rating: 4.7,
-    reviews: 1850,
-    address: "Downtown, AP",
-    openTime: "12 PM - 11:30 PM"
-  },
-  {
-    id: 3,
-    name: "Burger Bliss",
-    cuisine: "Fast Food",
-    price: "$",
-    deliveryTime: "20-25 mins",
-    distance: "1.8 km",
-    image: "🍔",
-    rating: 4.4,
-    reviews: 1560,
-    address: "Main Street, AP",
-    openTime: "10 AM - 12 AM"
-  },
-  {
-    id: 4,
-    name: "Sushi Sensation",
-    cuisine: "Japanese",
-    price: "$$$",
-    deliveryTime: "40-50 mins",
-    distance: "4.2 km",
-    image: "🍣",
-    rating: 4.8,
-    reviews: 980,
-    address: "Premium Area, AP",
-    openTime: "12 PM - 10:30 PM"
-  }
-];
-
-// ============== COMPONENTS ==============
-
-interface CategoryCardProps {
-  icon: string;
-  label: string;
-  onClick: () => void;
-}
-
-const CategoryCard: React.FC<CategoryCardProps> = ({ icon, label, onClick }) => (
-  <button
-    onClick={onClick}
-    className="flex flex-col items-center gap-2 p-6 rounded-xl bg-white border-2 border-gray-200 hover:border-green-600 hover:shadow-lg transition cursor-pointer"
-  >
-    <span className="text-5xl">{icon}</span>
-    <span className="text-sm font-semibold text-gray-700">{label}</span>
-  </button>
-);
-
-interface ListItemProps {
-  item: any;
-  category: Category;
-  onSelect: () => void;
-  onFavoriteToggle: () => void;
-  isFavorite: boolean;
-}
-
-const ListItem: React.FC<ListItemProps> = ({ item, category, onSelect, onFavoriteToggle, isFavorite }) => {
-  const getSubtitle = () => {
-    switch (category) {
-      case 'movies':
-        return `${item.genre} • ${item.duration}`;
-      case 'travel':
-        return `${item.days} days • ₹${item.price.toLocaleString()}`;
-      case 'shopping':
-        return `${item.category} • ₹${item.price.toLocaleString()}`;
-      case 'eating':
-        return `${item.cuisine} • ${item.deliveryTime}`;
-      default:
-        return '';
+# Mock data
+MOVIES = [
+    {
+        "id": 1,
+        "name": "Dune: Part Two",
+        "genre": "Sci-Fi/Adventure",
+        "duration": "2h 46m",
+        "releaseDate": "2024",
+        "language": "English",
+        "image": "🎬",
+        "rating": 4.8,
+        "reviews": 3200,
+        "theaters": "PVR, INOX, Cinepolis",
+        "description": "Epic space adventure with stunning visuals"
+    },
+    {
+        "id": 2,
+        "name": "Pushpa 2",
+        "genre": "Action/Drama",
+        "duration": "2h 35m",
+        "releaseDate": "2024",
+        "language": "Telugu",
+        "image": "🎭",
+        "rating": 4.6,
+        "reviews": 2800,
+        "theaters": "INOX, Cinepolis",
+        "description": "Action-packed Telugu blockbuster"
+    },
+    {
+        "id": 3,
+        "name": "Article 370",
+        "genre": "Drama/Thriller",
+        "duration": "2h 18m",
+        "releaseDate": "2024",
+        "language": "Hindi",
+        "image": "🎪",
+        "rating": 4.5,
+        "reviews": 1900,
+        "theaters": "PVR, INOX, Cinepolis",
+        "description": "Political thriller based on true events"
     }
-  };
+]
 
-  return (
-    <div
-      onClick={onSelect}
-      className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md transition cursor-pointer"
-    >
-      <div className="text-4xl">{item.image}</div>
-      <div className="flex-1">
-        <h3 className="font-semibold text-gray-800">{item.name}</h3>
-        <p className="text-sm text-gray-600">{getSubtitle()}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-yellow-500">⭐</span>
-          <span className="text-sm font-medium">{item.rating}</span>
-          <span className="text-xs text-gray-500">({item.reviews})</span>
+TRAVEL_PACKAGES = [
+    {
+        "id": 1,
+        "name": "Kerala Backwaters Tour",
+        "destination": "Kerala",
+        "days": 5,
+        "price": 24999,
+        "location": "Kottayam, Kerala",
+        "image": "🌴",
+        "rating": 4.7,
+        "reviews": 450,
+        "includes": ["Hotel", "Boat rides", "Meals", "Guide"],
+        "startDate": "2025-02-15"
+    },
+    {
+        "id": 2,
+        "name": "Himalayan Adventure",
+        "destination": "Himachal Pradesh",
+        "days": 7,
+        "price": 34999,
+        "location": "Manali, Himachal Pradesh",
+        "image": "⛰️",
+        "rating": 4.8,
+        "reviews": 620,
+        "includes": ["Trek", "Camping", "Meals", "Equipment"],
+        "startDate": "2025-03-01"
+    },
+    {
+        "id": 3,
+        "name": "Goa Beach Escape",
+        "destination": "Goa",
+        "days": 4,
+        "price": 18999,
+        "location": "South Goa",
+        "image": "🏖️",
+        "rating": 4.6,
+        "reviews": 380,
+        "includes": ["Resort", "Water sports", "Meals", "Beach activities"],
+        "startDate": "2025-02-20"
+    }
+]
+
+PRODUCTS = [
+    {
+        "id": 1,
+        "name": "Sony Wireless Headphones",
+        "price": 5999,
+        "category": "Electronics",
+        "image": "🎧",
+        "rating": 4.7,
+        "reviews": 1200,
+        "description": "Premium noise-cancelling wireless headphones",
+        "inStock": True
+    },
+    {
+        "id": 2,
+        "name": "Running Shoes",
+        "price": 3499,
+        "category": "Sports",
+        "image": "👟",
+        "rating": 4.5,
+        "reviews": 890,
+        "description": "Comfortable athletic running shoes",
+        "inStock": True
+    },
+    {
+        "id": 3,
+        "name": "Backpack",
+        "price": 2199,
+        "category": "Travel",
+        "image": "🎒",
+        "rating": 4.6,
+        "reviews": 560,
+        "description": "Durable travel backpack with multiple compartments",
+        "inStock": True
+    },
+    {
+        "id": 4,
+        "name": "Coffee Maker",
+        "price": 4299,
+        "category": "Kitchen",
+        "image": "☕",
+        "rating": 4.4,
+        "reviews": 340,
+        "description": "Automatic coffee maker with timer",
+        "inStock": False
+    }
+]
+
+RESTAURANTS = [
+    {
+        "id": 1,
+        "name": "Spice Route",
+        "cuisine": "Indian",
+        "price": "$$",
+        "deliveryTime": "30-40 mins",
+        "distance": "2.5 km",
+        "image": "🍛",
+        "rating": 4.6,
+        "reviews": 2100,
+        "address": "Amaravati, AP",
+        "openTime": "11 AM - 11 PM"
+    },
+    {
+        "id": 2,
+        "name": "Pasta Paradise",
+        "cuisine": "Italian",
+        "price": "$$$",
+        "deliveryTime": "35-45 mins",
+        "distance": "3.1 km",
+        "image": "🍝",
+        "rating": 4.7,
+        "reviews": 1850,
+        "address": "Downtown, AP",
+        "openTime": "12 PM - 11:30 PM"
+    },
+    {
+        "id": 3,
+        "name": "Burger Bliss",
+        "cuisine": "Fast Food",
+        "price": "$",
+        "deliveryTime": "20-25 mins",
+        "distance": "1.8 km",
+        "image": "🍔",
+        "rating": 4.4,
+        "reviews": 1560,
+        "address": "Main Street, AP",
+        "openTime": "10 AM - 12 AM"
+    },
+    {
+        "id": 4,
+        "name": "Sushi Sensation",
+        "cuisine": "Japanese",
+        "price": "$$$",
+        "deliveryTime": "40-50 mins",
+        "distance": "4.2 km",
+        "image": "🍣",
+        "rating": 4.8,
+        "reviews": 980,
+        "address": "Premium Area, AP",
+        "openTime": "12 PM - 10:30 PM"
+    }
+]
+
+# Store bookings in memory (in production, use a database)
+bookings = []
+
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookIt - Your All-in-One Booking Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(to bottom right, #f0fdf4, #dbeafe);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #6b7280;
+        }
+        
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .category-card {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .category-card:hover {
+            border-color: #16a34a;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .category-card .icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        
+        .category-card .label {
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .quick-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .quick-action {
+            flex: 1;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: box-shadow 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .quick-action:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .view-container {
+            background: #f9fafb;
+            min-height: 100vh;
+        }
+        
+        .view-header {
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 15px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .view-header .top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        
+        .back-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .search-box {
+            position: relative;
+            margin-top: 10px;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 10px 10px 10px 40px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .items-list {
+            padding: 20px;
+        }
+        
+        .list-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            cursor: pointer;
+            transition: box-shadow 0.3s;
+        }
+        
+        .list-item:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .list-item .icon {
+            font-size: 2.5rem;
+        }
+        
+        .list-item .content {
+            flex: 1;
+        }
+        
+        .list-item h3 {
+            color: #1f2937;
+            margin-bottom: 5px;
+        }
+        
+        .list-item .subtitle {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        
+        .list-item .rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+            font-size: 0.875rem;
+        }
+        
+        .favorite-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .detail-page {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .detail-icon {
+            text-align: center;
+            font-size: 4rem;
+            margin-bottom: 15px;
+        }
+        
+        .detail-title {
+            text-align: center;
+            font-size: 1.75rem;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        
+        .detail-rating {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .detail-info {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+        
+        .detail-info p {
+            margin-bottom: 10px;
+            color: #374151;
+        }
+        
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        
+        .quantity-buttons {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .quantity-buttons button {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .quantity-buttons button:hover {
+            background: #d1d5db;
+        }
+        
+        .total-price {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-size: 1.125rem;
+        }
+        
+        .total-price .amount {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #16a34a;
+        }
+        
+        .btn-primary {
+            width: 100%;
+            background: #16a34a;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .btn-primary:hover {
+            background: #15803d;
+        }
+        
+        .btn-secondary {
+            width: 100%;
+            background: #e5e7eb;
+            color: #1f2937;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+        
+        .cart-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .cart-item-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .cart-item-header .icon {
+            font-size: 2rem;
+        }
+        
+        .cart-item-info {
+            flex: 1;
+        }
+        
+        .cart-item-info h3 {
+            margin-bottom: 5px;
+        }
+        
+        .cart-item-info .category {
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+        
+        .cart-item-info .price {
+            color: #16a34a;
+            font-weight: 600;
+        }
+        
+        .delete-btn {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            cursor: pointer;
+            color: #ef4444;
+        }
+        
+        .cart-footer {
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            padding: 20px;
+            position: sticky;
+            bottom: 0;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .empty-state .icon {
+            font-size: 4rem;
+            color: #d1d5db;
+            margin-bottom: 15px;
+        }
+        
+        .empty-state p {
+            color: #6b7280;
+            font-size: 1.125rem;
+            margin-bottom: 20px;
+        }
+        
+        .confirmation {
+            text-align: center;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 400px;
+            margin: 100px auto;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .confirmation .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        
+        .confirmation h2 {
+            font-size: 1.75rem;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        
+        .confirmation p {
+            color: #6b7280;
+            margin-bottom: 30px;
+        }
+        
+        .booking-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .booking-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .booking-footer {
+            display: flex;
+            justify-content: space-between;
+            padding-top: 10px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .cart-badge {
+            position: relative;
+        }
+        
+        .cart-badge .badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            font-size: 0.75rem;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Home View -->
+    <div id="homeView" class="container">
+        <div class="header">
+            <h1>BookIt</h1>
+            <p>Your all-in-one booking platform</p>
         </div>
-      </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onFavoriteToggle();
-        }}
-        className="text-2xl hover:scale-110 transition"
-      >
-        {isFavorite ? '❤️' : '🤍'}
-      </button>
+        
+        <div class="categories-grid">
+            <div class="category-card" onclick="showCategory('movies')">
+                <div class="icon">🎬</div>
+                <div class="label">Movies</div>
+            </div>
+            <div class="category-card" onclick="showCategory('travel')">
+                <div class="icon">✈️</div>
+                <div class="label">Travel</div>
+            </div>
+            <div class="category-card" onclick="showCategory('shopping')">
+                <div class="icon">🛍️</div>
+                <div class="label">Shopping</div>
+            </div>
+            <div class="category-card" onclick="showCategory('eating')">
+                <div class="icon">🍽️</div>
+                <div class="label">Dining</div>
+            </div>
+        </div>
+        
+        <div class="quick-actions">
+            <button class="quick-action" onclick="showView('cart')">
+                🛒 Cart (<span id="cartCount">0</span>)
+            </button>
+            <button class="quick-action" onclick="showView('bookings')">
+                🕐 Bookings
+            </button>
+        </div>
     </div>
-  );
-};
-
-interface DetailPageProps {
-  item: any;
-  category: Category;
-  onBack: () => void;
-  onAddToCart: (quantity: number) => void;
-  isFavorite: boolean;
-  onFavoriteToggle: () => void;
-}
-
-const DetailPage: React.FC<DetailPageProps> = ({
-  item,
-  category,
-  onBack,
-  onAddToCart,
-  isFavorite,
-  onFavoriteToggle
-}) => {
-  const [quantity, setQuantity] = useState(1);
-
-  const renderDetails = () => {
-    switch (category) {
-      case 'movies':
-        return (
-          <div className="space-y-3 text-gray-700">
-            <p><strong>Genre:</strong> {item.genre}</p>
-            <p><strong>Duration:</strong> {item.duration}</p>
-            <p><strong>Language:</strong> {item.language}</p>
-            <p><strong>Release Date:</strong> {item.releaseDate}</p>
-            <p><strong>Theaters:</strong> {item.theaters}</p>
-            <p className="text-sm mt-3">{item.description}</p>
-          </div>
-        );
-      case 'travel':
-        return (
-          <div className="space-y-3 text-gray-700">
-            <p><strong>Duration:</strong> {item.days} days</p>
-            <p><strong>Price:</strong> ₹{item.price.toLocaleString()}</p>
-            <p><strong>Start Date:</strong> {item.startDate}</p>
-            <p><strong>Location:</strong> {item.location}</p>
-            <div>
-              <strong>Includes:</strong>
-              <ul className="list-disc ml-5 mt-1">
-                {item.includes.map((inc: string) => (
-                  <li key={inc}>{inc}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        );
-      case 'shopping':
-        return (
-          <div className="space-y-3 text-gray-700">
-            <p><strong>Price:</strong> ₹{item.price.toLocaleString()}</p>
-            <p><strong>Category:</strong> {item.category}</p>
-            <p><strong>Stock:</strong> {item.inStock ? '✅ In Stock' : '❌ Out of Stock'}</p>
-            <p className="text-sm mt-3">{item.description}</p>
-          </div>
-        );
-      case 'eating':
-        return (
-          <div className="space-y-3 text-gray-700">
-            <p><strong>Cuisine:</strong> {item.cuisine}</p>
-            <p><strong>Price Range:</strong> {item.price}</p>
-            <p><strong>Delivery Time:</strong> {item.deliveryTime}</p>
-            <p><strong>Distance:</strong> {item.distance}</p>
-            <p><strong>Address:</strong> {item.address}</p>
-            <p><strong>Hours:</strong> {item.openTime}</p>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const getPrice = () => {
-    if (category === 'movies') return 399;
-    if (category === 'travel') return item.price;
-    if (category === 'shopping') return item.price;
-    if (category === 'eating') return 500;
-    return 0;
-  };
-
-  return (
-    <div className="h-full flex flex-col bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b p-4 flex items-center justify-between sticky top-0 z-10">
-        <button onClick={onBack} className="text-2xl font-bold">←</button>
-        <h1 className="font-bold text-gray-800">Details</h1>
-        <button onClick={onFavoriteToggle} className="text-2xl">
-          {isFavorite ? '❤️' : '🤍'}
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="bg-white rounded-xl p-6 shadow-sm">
-          <div className="text-center mb-4">
-            <div className="text-6xl mb-3">{item.image}</div>
-            <h2 className="text-2xl font-bold text-gray-800">{item.name}</h2>
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <span className="text-yellow-500">⭐</span>
-              <span className="font-semibold">{item.rating}</span>
-              <span className="text-sm text-gray-500">({item.reviews} reviews)</span>
-            </div>
-          </div>
-
-          <div className="border-t pt-4 mt-4">
-            {renderDetails()}
-          </div>
-
-          <div className="border-t pt-4 mt-4">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-lg font-semibold">Quantity:</span>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 font-bold"
-                >
-                  -
+    
+    <!-- List View -->
+    <div id="listView" class="view-container hidden">
+        <div class="view-header">
+            <div class="top">
+                <button class="back-btn" onclick="showView('home')">←</button>
+                <h2 id="categoryTitle"></h2>
+                <button class="cart-badge" onclick="showView('cart')">
+                    🛒
+                    <span class="badge" id="cartBadge" style="display: none;">0</span>
                 </button>
-                <span className="w-8 text-center font-semibold">{quantity}</span>
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 font-bold"
-                >
-                  +
-                </button>
-              </div>
             </div>
-
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-lg font-semibold">Total:</span>
-              <span className="text-2xl font-bold text-green-600">
-                ₹{(getPrice() * quantity).toLocaleString()}
-              </span>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search..." oninput="filterItems()">
             </div>
-
-            <button
-              onClick={() => onAddToCart(quantity)}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition"
-            >
-              Add to Cart
-            </button>
-          </div>
         </div>
-      </div>
+        <div class="items-list" id="itemsList"></div>
     </div>
-  );
-};
-
-// ============== MAIN APP ==============
-
-export default function BookingApp() {
-  const [viewMode, setViewMode] = useState<ViewMode>('home');
-  const [currentCategory, setCurrentCategory] = useState<Category>('movies');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const getCategoryData = (category: Category) => {
-    switch (category) {
-      case 'movies': return MOVIES;
-      case 'travel': return TRAVEL_PACKAGES;
-      case 'shopping': return PRODUCTS;
-      case 'eating': return RESTAURANTS;
-    }
-  };
-
-  const filteredItems = useMemo(() => {
-    const items = getCategoryData(currentCategory);
-    if (!searchQuery) return items;
-    return items.filter(item => 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [currentCategory, searchQuery]);
-
-  const toggleFavorite = (category: Category, id: number) => {
-    const key = `${category}-${id}`;
-    setFavorites(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(key)) {
-        newSet.delete(key);
-      } else {
-        newSet.add(key);
-      }
-      return newSet;
-    });
-  };
-
-  const addToCart = (item: any, quantity: number, category: Category) => {
-    const price = category === 'movies' ? 399 :
-                  category === 'eating' ? 500 :
-                  item.price;
-
-    const existingIndex = cart.findIndex(c => c.id === item.id && c.categoryType === category);
     
-    if (existingIndex >= 0) {
-      const newCart = [...cart];
-      newCart[existingIndex].quantity += quantity;
-      setCart(newCart);
-    } else {
-      setCart([...cart, {
-        id: item.id,
-        name: item.name,
-        price,
-        quantity,
-        category: item.genre || item.destination || item.category || item.cuisine,
-        image: item.image,
-        categoryType: category
-      }]);
-    }
+    <!-- Detail View -->
+    <div id="detailView" class="view-container hidden">
+        <div class="view-header">
+            <div class="top">
+                <button class="back-btn" onclick="showView('list')">←</button>
+                <h2>Details</h2>
+                <button class="favorite-btn" id="detailFavorite" onclick="toggleDetailFavorite()">🤍</button>
+            </div>
+        </div>
+        <div class="detail-page" id="detailContent"></div>
+    </div>
     
-    setViewMode('cart');
-  };
-
-  const removeFromCart = (index: number) => {
-    setCart(cart.filter((_, i) => i !== index));
-  };
-
-  const updateQuantity = (index: number, newQuantity: number) => {
-    if (newQuantity < 1) return;
-    const newCart = [...cart];
-    newCart[index].quantity = newQuantity;
-    setCart(newCart);
-  };
-
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-  const completeBooking = () => {
-    const newBooking: Booking = {
-      id: Date.now().toString(),
-      date: new Date().toLocaleDateString(),
-      itemName: cart.map(c => c.name).join(', '),
-      quantity: cart.reduce((sum, c) => sum + c.quantity, 0),
-      total: cartTotal,
-      category: cart[0]?.categoryType || 'movies'
-    };
+    <!-- Cart View -->
+    <div id="cartView" class="view-container hidden">
+        <div class="view-header">
+            <div class="top">
+                <button class="back-btn" onclick="showView('home')">←</button>
+                <h2>Shopping Cart</h2>
+                <div style="width: 24px;"></div>
+            </div>
+        </div>
+        <div id="cartContent"></div>
+    </div>
     
-    setBookings([...bookings, newBooking]);
-    setCart([]);
-    setViewMode('confirmation');
-  };
-
-  // HOME VIEW
-  if (viewMode === 'home') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6">
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">BookIt</h1>
-            <p className="text-gray-600">Your all-in-one booking platform</p>
-          </div>
-
-          {/* Categories Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <CategoryCard
-              icon="🎬"
-              label="Movies"
-              onClick={() => {
-                setCurrentCategory('movies');
-                setViewMode('list');
-              }}
-            />
-            <CategoryCard
-              icon="✈️"
-              label="Travel"
-              onClick={() => {
-                setCurrentCategory('travel');
-                setViewMode('list');
-              }}
-            />
-            <CategoryCard
-              icon="🛍️"
-              label="Shopping"
-              onClick={() => {
-                setCurrentCategory('shopping');
-                setViewMode('list');
-              }}
-            />
-            <CategoryCard
-              icon="🍽️"
-              label="Dining"
-              onClick={() => {
-                setCurrentCategory('eating');
-                setViewMode('list');
-              }}
-            />
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setViewMode('cart')}
-              className="flex-1 bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition flex items-center justify-center gap-2"
-            >
-              <ShoppingCart className="w-5 h-5" />
-              <span className="font-semibold">Cart ({cart.length})</span>
-            </button>
-            <button
-              onClick={() => setViewMode('bookings')}
-              className="flex-1 bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition flex items-center justify-center gap-2"
-            >
-              <Clock className="w-5 h-5" />
-              <span className="font-semibold">Bookings</span>
-            </button>
-          </div>
+    <!-- Confirmation View -->
+    <div id="confirmationView" class="hidden">
+        <div class="confirmation">
+            <div class="icon">✅</div>
+            <h2>Booking Confirmed!</h2>
+            <p>Your booking has been successfully placed.</p>
+            <button class="btn-primary" onclick="showView('bookings')">View Bookings</button>
+            <button class="btn-secondary" onclick="showView('home')">Back to Home</button>
         </div>
-      </div>
-    );
-  }
-
-  // LIST VIEW
-  if (viewMode === 'list') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        {/* Header */}
-        <div className="bg-white border-b p-4 sticky top-0 z-10">
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={() => setViewMode('home')} className="text-2xl font-bold">←</button>
-            <h1 className="font-bold text-gray-800 capitalize">{currentCategory}</h1>
-            <button onClick={() => setViewMode('cart')} className="relative">
-              <ShoppingCart className="w-6 h-6" />
-              {cart.length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {cart.length}
-                </span>
-              )}
-            </button>
-          </div>
-          
-          <div className="relative">
-            <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
+    </div>
+    
+    <!-- Bookings View -->
+    <div id="bookingsView" class="view-container hidden">
+        <div class="view-header">
+            <div class="top">
+                <button class="back-btn" onclick="showView('home')">←</button>
+                <h2>My Bookings</h2>
+                <div style="width: 24px;"></div>
+            </div>
         </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-auto p-4 space-y-3">
-          {filteredItems.map(item => (
-            <ListItem
-              key={item.id}
-              item={item}
-              category={currentCategory}
-              onSelect={() => {
-                setSelectedItem(item);
-                setViewMode('detail');
-              }}
-              onFavoriteToggle={() => toggleFavorite(currentCategory, item.id)}
-              isFavorite={favorites.has(`${currentCategory}-${item.id}`)}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // DETAIL VIEW
-  if (viewMode === 'detail' && selectedItem) {
-    return (
-      <DetailPage
-        item={selectedItem}
-        category={currentCategory}
-        onBack={() => setViewMode('list')}
-        onAddToCart={(quantity) => addToCart(selectedItem, quantity, currentCategory)}
-        isFavorite={favorites.has(`${currentCategory}-${selectedItem.id}`)}
-        onFavoriteToggle={() => toggleFavorite(currentCategory, selectedItem.id)}
-      />
-    );
-  }
-
-  // CART VIEW
-  if (viewMode === 'cart') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-white border-b p-4 flex items-center justify-between">
-          <button onClick={() => setViewMode('home')} className="text-2xl font-bold">←</button>
-          <h1 className="font-bold text-gray-800">Shopping Cart</h1>
-          <div className="w-6"></div>
-        </div>
-
-        {cart.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8">
-            <ShoppingCart className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">Your cart is empty</p>
-            <button
-              onClick={() => setViewMode('home')}
-              className="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              Start Shopping
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 overflow-auto p-4 space-y-3">
-              {cart.map((item, index) => (
-                <div key={index} className="bg-white p-4 rounded-lg shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl">{item.image}</div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{item.name}</h3>
-                      <p className="text-sm text-gray-600">{item.category}</p>
-                      <p className="text-green-600 font-semibold">₹{item.price.toLocaleString()}</p>
+        <div id="bookingsContent"></div>
+    </div>
+    
+    <script>
+        const DATA = {{ data|tojson }};
+        let cart = [];
+        let favorites = new Set();
+        let currentCategory = 'movies';
+        let currentItem = null;
+        let quantity = 1;
+        
+        function showView(view) {
+            document.querySelectorAll('[id$="View"]').forEach(el => el.classList.add('hidden'));
+            
+            if (view === 'home') {
+                document.getElementById('homeView').classList.remove('hidden');
+            } else if (view === 'list') {
+                document.getElementById('listView').classList.remove('hidden');
+                renderList();
+            } else if (view === 'detail') {
+                document.getElementById('detailView').classList.remove('hidden');
+                renderDetail();
+            } else if (view === 'cart') {
+                document.getElementById('cartView').classList.remove('hidden');
+                renderCart();
+            } else if (view === 'confirmation') {
+                document.getElementById('confirmationView').classList.remove('hidden');
+            } else if (view === 'bookings') {
+                document.getElementById('bookingsView').classList.remove('hidden');
+                loadBookings();
+            }
+            
+            updateCartCount();
+        }
+        
+        function showCategory(category) {
+            currentCategory = category;
+            document.getElementById('categoryTitle').textContent = category.charAt(0).toUpperCase() + category.slice(1);
+            showView('list');
+        }
+        
+        function getCategoryData() {
+            return DATA[currentCategory] || [];
+        }
+        
+        function renderList() {
+            const items = getCategoryData();
+            const html = items.map(item => `
+                <div class="list-item" onclick="showItemDetail(${item.id})">
+                    <div class="icon">${item.image}</div>
+                    <div class="content">
+                        <h3>${item.name}</h3>
+                        <div class="subtitle">${getSubtitle(item)}</div>
+                        <div class="rating">
+                            <span>⭐</span>
+                            <span>${item.rating}</span>
+                            <span style="color: #6b7280;">(${item.reviews})</span>
+                        </div>
                     </div>
-                    <button
-                      onClick={() => removeFromCart(index)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      🗑️
+                    <button class="favorite-btn" onclick="toggleFavorite(event, '${currentCategory}-${item.id}')">
+                        ${favorites.has(`${currentCategory}-${item.id}`) ? '❤️' : '🤍'}
                     </button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                    <span className="text-sm text-gray-600">Quantity:</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateQuantity(index, item.quantity - 1)}
-                        className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 text-sm font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="w-8 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(index, item.quantity + 1)}
-                        className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 text-sm font-bold"
-                      >
-                        +
-                      </button>
+                </div>
+            `).join('');
+            
+            document.getElementById('itemsList').innerHTML = html;
+        }
+        
+        function getSubtitle(item) {
+            if (currentCategory === 'movies') return `${item.genre} • ${item.duration}`;
+            if (currentCategory === 'travel') return `${item.days} days • ₹${item.price.toLocaleString()}`;
+            if (currentCategory === 'shopping') return `${item.category} • ₹${item.price.toLocaleString()}`;
+            if (currentCategory === 'eating') return `${item.cuisine} • ${item.deliveryTime}`;
+            return '';
+        }
+        
+        function toggleFavorite(event, key) {
+            event.stopPropagation();
+            if (favorites.has(key)) {
+                favorites.delete(key);
+            } else {
+                favorites.add(key);
+            }
+            renderList();
+        }
+        
+        function showItemDetail(id) {
+            const items = getCategoryData();
+            currentItem = items.find(item => item.id === id);
+            quantity = 1;
+            showView('detail');
+        }
+        
+        function renderDetail() {
+            if (!currentItem) return;
+            
+            const price = getItemPrice(currentItem);
+            const details = getItemDetails(currentItem);
+            
+            const html = `
+                <div class="detail-icon">${currentItem.image}</div>
+                <h2 class="detail-title">${currentItem.name}</h2>
+                <div class="detail-rating">
+                    <span>⭐</span>
+                    <span style="font-weight: 600;">${currentItem.rating}</span>
+                    <span style="color: #6b7280;">(${currentItem.reviews} reviews)</span>
+                </div>
+                
+                <div class="detail-info">
+                    ${details}
+                </div>
+                
+                <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
+                    <div class="quantity-control">
+                        <span style="font-size: 1.125rem; font-weight: 600;">Quantity:</span>
+                        <div class="quantity-buttons">
+                            <button onclick="changeQuantity(-1)">-</button>
+                            <span id="quantityDisplay">${quantity}</span>
+                            <button onclick="changeQuantity(1)">+</button>
+                        </div>
                     </div>
-                  </div>
+                    
+                    <div class="total-price">
+                        <span style="font-weight: 600;">Total:</span>
+                        <span class="amount">₹<span id="totalDisplay">${(price * quantity).toLocaleString()}</span></span>
+                    </div>
+                    
+                    <button class="btn-primary" onclick="addToCart()">Add to Cart</button>
                 </div>
-              ))}
-            </div>
-
-            <div className="bg-white border-t p-4">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-lg font-semibold">Total:</span>
-                <span className="text-2xl font-bold text-green-600">
-                  ₹{cartTotal.toLocaleString()}
-                </span>
-              </div>
-              <button
-                onClick={completeBooking}
-                className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700"
-              >
-                Proceed to Checkout
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // CONFIRMATION VIEW
-  if (viewMode === 'confirmation') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="bg-white rounded-xl p-8 shadow-lg max-w-md w-full text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Booking Confirmed!</h2>
-          <p className="text-gray-600 mb-6">Your booking has been successfully placed.</p>
-          
-          <div className="space-y-3">
-            <button
-              onClick={() => setViewMode('bookings')}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700"
-            >
-              View Bookings
-            </button>
-            <button
-              onClick={() => setViewMode('home')}
-              className="w-full bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300"
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // BOOKINGS VIEW
-  if (viewMode === 'bookings') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-white border-b p-4 flex items-center justify-between">
-          <button onClick={() => setViewMode('home')} className="text-2xl font-bold">←</button>
-          <h1 className="font-bold text-gray-800">My Bookings</h1>
-          <div className="w-6"></div>
-        </div>
-
-        {bookings.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8">
-            <Clock className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No bookings yet</p>
-            <button
-              onClick={() => setViewMode('home')}
-              className="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              Start Booking
-            </button>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {bookings.map(booking => (
-              <div key={booking.id} className="bg-white p-4 rounded-lg shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-gray-800 capitalize">{booking.category}</span>
-                  <span className="text-sm text-gray-500">{booking.date}</span>
-                </div>
-                <p className="text-gray-700 mb-2">{booking.itemName}</p>
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <span className="text-sm text-gray-600">Qty: {booking.quantity}</span>
-                  <span className="font-bold text-green-600">₹{booking.total.toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return null;
-}
+            `;
+            
+            document.getElementById('detailContent').innerHTML = html;
+            
+            const favoriteBtn = document.getElementById('detailFavorite');
+            favoriteBtn.textContent = favorites.has(`${currentCategory}-${currentItem.id}`) ? '❤️' : '🤍';
+        }
+        
+        function getItemDetails(item) {
+            if (currentCategory === 'movies') {
+                return `
+                    <p><strong>Genre:</strong> ${item.genre}</p>
+                    <p><strong>Duration:</strong> ${item.duration}</p>
+                    <p><strong>Language:</strong> ${item.language}</p>
+                    <p><strong>Release Date:</strong> ${item.releaseDate}</p>
+                    <p><strong>Theaters:</strong> ${item.theaters}</p>
+                    <p style="margin-top: 10px;">${item.description}</p>
+                `;
+            } else if (currentCategory === 'travel') {
+                return `
+                    <p><strong>Duration:</strong> ${item.days} days</p>
+                    <p><strong>Price:</strong> ₹${item.price.toLocaleString()}</p>
+                    <p><strong>Start Date:</strong> ${item.startDate}</p>
+                    <p><strong>Location:</strong> ${item.location}</p>
+                    <p><strong>Includes:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 5px;">
+                        ${item.includes.map(inc => `<li>${inc}</li>`).join('')}
+                    </ul>
+                `;
+            } else if (currentCategory === 'shopping') {
+                return `
+                    <p><strong>Price:</strong> ₹${item.price.toLocaleString()}</p>
+                    <p><strong>Category:</strong> ${item.category}</p>
+                    <p><strong>Stock:</strong> ${item.inStock ? '✅ In Stock' : '❌ Out of Stock'}</p>
+                    <p style="margin-
