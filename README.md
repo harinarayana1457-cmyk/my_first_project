@@ -1,7 +1,7 @@
 <div align="center">
 
-# 🎫 BOOKIT — MULTI-DOMAIN RESERVATION PLATFORM
-### All-In-One Unified Booking Engine for Movies, Concerts, Travel & Dining
+# 🎫 my_first_project — BookIt Multi-Domain Reservation & Universal Cart Engine
+### Production-Grade Full-Stack Booking Platform & Universal Cart Architecture Built with Python & Flask
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Framework-Flask%203.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
